@@ -1,3 +1,5 @@
+// First, add this to your admin.js file
+
 // Import Firebase SDK
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.1.0/firebase-app.js";
 import {
@@ -10,7 +12,8 @@ import {
   query,
   orderBy,
   where,
-  serverTimestamp
+  serverTimestamp,
+  addDoc
 } from "https://www.gstatic.com/firebasejs/10.1.0/firebase-firestore.js";
 
 // Your Firebase configuration
@@ -46,6 +49,8 @@ const customerEmailBody = document.getElementById("customerEmailBody");
 const driverEmailBody = document.getElementById("driverEmailBody");
 const customerEmailPreview = document.getElementById("customerEmailPreview");
 const driverEmailPreview = document.getElementById("driverEmailPreview");
+const customerEmailSubject = document.getElementById("customerEmailSubject");
+const driverEmailSubject = document.getElementById("driverEmailSubject");
 const tabs = document.querySelectorAll(".tab");
 const tabContents = document.querySelectorAll(".tab-content");
 
@@ -320,21 +325,65 @@ assignDriverForm.addEventListener("submit", async function(e) {
   }
 });
 
-// Send notifications form
+// Send notifications form - UPDATED to actually send emails
 sendNotificationForm.addEventListener("submit", async function(e) {
   e.preventDefault();
   const bookingId = notificationBookingIdInput.value;
 
   try {
-    // In a real application, you would send emails here
-    // For this demo, we'll simulate email sending
+    // Show sending indicator
+    const submitBtn = this.querySelector(".submit-btn");
+    const originalBtnText = submitBtn.textContent;
+    submitBtn.textContent = "Sending...";
+    submitBtn.disabled = true;
+
+    // Get booking details
+    const bookingRef = doc(db, "bookings", bookingId);
+    const bookingSnap = await getDoc(bookingRef);
+    
+    if (!bookingSnap.exists()) {
+      throw new Error("Booking not found");
+    }
+    
+    const booking = bookingSnap.data();
+
+    // Create email data to send to our "mail" collection in Firestore
+    // This collection will be watched by a Cloud Function that does the actual sending
+    const emailsCollection = collection(db, "mail");
+    
+    // Customer email
+    if (booking.email) {
+      await addDoc(emailsCollection, {
+        to: booking.email,
+        subject: customerEmailSubject.value,
+        text: customerEmailBody.value,
+        html: customerEmailBody.value.replace(/\n/g, '<br>'),
+        createdAt: serverTimestamp(),
+        status: "pending"
+      });
+    }
+    
+    // Driver email
+    if (booking.driver && booking.driver.email) {
+      await addDoc(emailsCollection, {
+        to: booking.driver.email,
+        subject: driverEmailSubject.value,
+        text: driverEmailBody.value,
+        html: driverEmailBody.value.replace(/\n/g, '<br>'),
+        createdAt: serverTimestamp(),
+        status: "pending"
+      });
+    }
 
     // Update the booking document to mark notifications as sent
-    const bookingRef = doc(db, "bookings", bookingId);
     await updateDoc(bookingRef, {
       notificationsSent: true,
       notificationTimestamp: serverTimestamp()
     });
+
+    // Reset button state
+    submitBtn.textContent = originalBtnText;
+    submitBtn.disabled = false;
 
     alert("Notifications sent successfully!");
     notificationModal.style.display = "none";
@@ -344,6 +393,11 @@ sendNotificationForm.addEventListener("submit", async function(e) {
   } catch (error) {
     console.error("Error sending notifications:", error);
     alert("Error sending notifications: " + error.message);
+    
+    // Reset button state in case of error
+    const submitBtn = this.querySelector(".submit-btn");
+    submitBtn.textContent = "Send Notifications";
+    submitBtn.disabled = false;
   }
 });
 
